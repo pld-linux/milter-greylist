@@ -6,7 +6,7 @@
 Summary:	Milter for greylisting, the next step in the spam control war
 Name:		milter-greylist
 Version:	4.2.7
-Release:	0.1
+Release:	0.2
 License:	BSD with advertising
 Group:		Daemons
 URL:		http://hcpnet.free.fr/milter-greylist/
@@ -24,14 +24,15 @@ BuildRequires:	rpmbuild(macros) >= 1.202
 Requires(postun):	/usr/sbin/userdel
 Requires(pre):	/bin/id
 Requires(pre):	/usr/sbin/useradd
-%{?with_libbind:BuildRequires:	%{_libdir}/libbind.so}
+%{?with_libbind:BuildRequires:	libbind-devel}
+BuildRequires:	autoconf
 BuildRequires:	GeoIP-devel
 BuildRequires:	bison
 BuildRequires:	curl-devel
 BuildRequires:	flex
+BuildRequires:	libmilter-devel
 %{?with_spf:BuildRequires:	libspf-devel}
 BuildRequires:	m4
-BuildRequires:	sendmail-devel
 Provides:	group(%{username})
 Provides:	user(%{username})
 BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
@@ -58,7 +59,10 @@ This package provides a greylist filter for sendmail's milter API.
 %patch9 -p1
 %patch10 -p1
 
-sed -i -e 's!/libresolv.a!/../../../no-such-lib.a!g' configure
+%{__sed} -i -e 's!/libresolv.a!/../../../no-such-lib.a!g' configure.ac
+
+# drop rpath and wrong lib dir
+%{__sed} -i -e 's#-L$withval/lib -Wl,$rpath$withval/lib##' configure.ac
 
 grep -rl /var/milter-greylist . | xargs sed -i -e '
 	s!/var/milter-greylist/milter-greylist.sock!%{rundir}/milter-greylist.sock!g;
@@ -67,10 +71,9 @@ grep -rl /var/milter-greylist . | xargs sed -i -e '
 '
 
 %build
-_comps="%{?with_libbind:libbind} libcurl"
-export CPPFLAGS="-DUSE_CURL -DUSE_GEOIP -D_GNU_SOURCE -D_REENTRANT $(pkg-config --cflags-only-I $_comps)"
-export LDFLAGS="-Wl,--as-needed $(pkg-config --libs $_comps) -lGeoIP"
-
+%{__aclocal}
+%{__autoconf}
+%{__autoheader}
 %configure \
 	--disable-rpath \
 	--with-user=%{username} \
@@ -79,8 +82,10 @@ export LDFLAGS="-Wl,--as-needed $(pkg-config --libs $_comps) -lGeoIP"
 	--enable-p0f \
 	--disable-drac \
 	--with-drac-db=%{vardir}/drac/drac.db \
+	--with-libGeoIP=/usr \
+	--with-libcurl=/usr \
+	%{?with_libbind:--with-libbind=/usr} \
 	%{?with_spf:--with-libspf=/usr}
-
 ## is not SMP safe :(
 %{__make} -j1 \
 	TEST=false \
@@ -89,7 +94,7 @@ export LDFLAGS="-Wl,--as-needed $(pkg-config --libs $_comps) -lGeoIP"
 %install
 rm -rf $RPM_BUILD_ROOT
 
-install -d $RPM_BUILD_ROOT{%{rundir},%{dbdir},%{_var}/run}
+install -d $RPM_BUILD_ROOT{%{rundir},%{dbdir},%{_var}/run,/etc/rc.d/init.d}
 %{__make} install \
 	TEST=false \
 	USER=%(id -u) \
@@ -103,7 +108,7 @@ touch $RPM_BUILD_ROOT%{rundir}/milter-greylist.sock
 touch $RPM_BUILD_ROOT%{_var}/run/milter-greylist.pid
 
 %pre
-%groupadd -g  7 -r %{username}
+%groupadd -g 7 -r %{username}
 %useradd -u 7 -r -s /sbin/nologin -M -d %{vardir} -c 'Greylist-milter user' -g %{username} %{username}
 
 %postun
