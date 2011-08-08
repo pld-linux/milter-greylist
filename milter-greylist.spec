@@ -20,19 +20,22 @@ Patch8:		cloexec.patch
 # http://tech.groups.yahoo.com/group/milter-greylist/message/5564
 Patch9:		spamd-null.patch
 Patch10:	config.patch
-BuildRequires:	rpmbuild(macros) >= 1.202
-Requires(postun):	/usr/sbin/userdel
-Requires(pre):	/bin/id
-Requires(pre):	/usr/sbin/useradd
-%{?with_libbind:BuildRequires:	libbind-devel}
-BuildRequires:	autoconf
 BuildRequires:	GeoIP-devel
+BuildRequires:	autoconf
 BuildRequires:	bison
 BuildRequires:	curl-devel
 BuildRequires:	flex
+%{?with_libbind:BuildRequires:	libbind-devel}
 BuildRequires:	libmilter-devel
 %{?with_spf:BuildRequires:	libspf-devel}
 BuildRequires:	m4
+BuildRequires:	rpmbuild(macros) >= 1.202
+Requires(postun):	/usr/sbin/groupdel
+Requires(postun):	/usr/sbin/userdel
+Requires(pre):	/bin/id
+Requires(pre):	/usr/bin/getgid
+Requires(pre):	/usr/sbin/groupadd
+Requires(pre):	/usr/sbin/useradd
 Provides:	group(%{username})
 Provides:	user(%{username})
 BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
