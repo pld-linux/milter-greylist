@@ -110,9 +110,12 @@ install -p %{SOURCE1} $RPM_BUILD_ROOT/etc/rc.d/init.d/%{name}
 touch $RPM_BUILD_ROOT%{rundir}/milter-greylist.sock
 touch $RPM_BUILD_ROOT%{_var}/run/milter-greylist.pid
 
+%clean
+rm -rf $RPM_BUILD_ROOT
+
 %pre
-%groupadd -g 7 -r %{username}
-%useradd -u 7 -r -s /sbin/nologin -M -d %{vardir} -c 'Greylist-milter user' -g %{username} %{username}
+%groupadd -g 272 -r %{username}
+%useradd -u 272 -r -s /sbin/false -M -d %{vardir} -c 'Greylist-milter user' -g %{username} %{username}
 
 %postun
 if [ "$1" = "0" ]; then
@@ -123,9 +126,6 @@ fi
 %post
 /sbin/chkconfig --add %{name}
 %service %{name} restart
-
-%clean
-rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(644,root,root,755)
