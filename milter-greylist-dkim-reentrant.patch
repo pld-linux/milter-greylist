@@ -1,0 +1,75 @@
+Lock DKIM calls
+
+Index: milter-greylist-4.2.5/dkimcheck.c
+===================================================================
+--- milter-greylist-4.2.5.orig/dkimcheck.c
++++ milter-greylist-4.2.5/dkimcheck.c
+@@ -63,6 +63,7 @@ __RCSID("$Id: dkimcheck.c,v 1.4 2008/10/
+ #include "dkimcheck.h"
+ 
+ static DKIM_LIB *dkim_ptr = NULL;
++static pthread_rwlock_t dkim_lock;
+ static sfsistat dkimcheck_error(struct mlfi_priv *);
+ 
+ static sfsistat
+@@ -115,28 +116,36 @@ dkimcheck_error(priv)
+ }
+ 
+ void
+-dkimcheck_init(void)
++dkimcheck_clear(void)
+ {
++	/*
++	 * XXX This probably leaves stale handles for messages being processed
++	 */
++
++	WRLOCK(&dkim_lock);
++	if (dkim_ptr != NULL)
++		dkim_close(dkim_ptr);
++	dkim_ptr = NULL;
++
+ 	if ((dkim_ptr = dkim_init(NULL, NULL)) == NULL) {
+ 		mg_log(LOG_ERR, "dkim_init() failed");
+ 		exit(EX_OSERR);
+ 	}
+-
+-	return;
++	UNLOCK(&dkim_lock);
+ }
+ 
+ void
+-dkimcheck_clear(void)
++dkimcheck_init(void)
+ {
+-	/*
+-	 * XXX This probably leaves stale handles for messages being processed
+-	 */
+-	if (dkim_ptr != NULL)
+-		dkim_close(dkim_ptr);
+-	dkim_ptr = NULL;
++	int error;
+ 
+-	dkimcheck_init();
+-	return;
++	if ((error = pthread_rwlock_init(&dkim_lock, NULL)) != 0) {
++		mg_log(LOG_ERR, "pthread_rwlock_init failed: %s",
++		    strerror(error));
++		exit(EX_OSERR);
++	}
++
++	dkimcheck_clear();
+ }
+ 
+ sfsistat
+@@ -159,8 +168,11 @@ dkimcheck_header(name, value, priv)
+ 		if (priv->priv_dkimstat != DKIM_STAT_OK)
+ 			return SMFIS_CONTINUE;
+ 
++		WRLOCK(&dkim_lock);
+ 		priv->priv_dkim = dkim_verify(dkim_ptr, priv->priv_queueid,
+ 					      NULL, &priv->priv_dkimstat);
++		UNLOCK(&dkim_lock);
++
+ 		if (priv->priv_dkim == NULL) {
+ 			mg_log(LOG_ERR, "dkim_verify() failed: %s",
+ 			       dkim_getresultstr(priv->priv_dkimstat));

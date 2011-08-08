@@ -1,0 +1,213 @@
+Set CLOEXEC flags for sockets
+
+Subprocesses spawned by 'stat "| ..."' inherited all open sockets.
+This wastes resources because it keeps lot of half-open sockets in the
+system, can cause problems with SELinux and cause misbehavior because
+sockets seems to be still open for the other side.
+
+E.g. on my system, the stat logger consumes
+
+ # ls /proc/10204/fd | wc -l
+ 166
+
+sockets.
+
+Index: milter-greylist-4.2.5/milter-greylist.h
+===================================================================
+--- milter-greylist-4.2.5.orig/milter-greylist.h
++++ milter-greylist-4.2.5/milter-greylist.h
+@@ -257,6 +257,16 @@ char *fstring_escape(char *);
+ size_t mystrlcat(char *, const char *src, size_t size);
+ #endif
+ 
++#ifdef USE_CLOEXEC
++/* This requires Linux 2.6.27+ and the conditional must be set manually */
++#define socket_cloexec(_domain, _type, _protocol) \
++	socket(_domain, (_type) | SOCK_CLOEXEC, _protocol)
++#else
++int socket_cloexec(int domain, int type, int protocol);
++#endif
++
++int set_cloexec_flag(int fd, int value);
++
+ /*
+  * Locking management
+  */
+Index: milter-greylist-4.2.5/p0f.c
+===================================================================
+--- milter-greylist-4.2.5.orig/p0f.c
++++ milter-greylist-4.2.5/p0f.c
+@@ -268,7 +268,7 @@ p0f_connect(void)
+ 	if (!conf.c_p0fsock[0])
+ 		return -1;
+ 
+-	if ((p0fsock = socket(PF_UNIX,SOCK_STREAM,0)) == -1) {
++	if ((p0fsock = socket_cloexec(PF_UNIX,SOCK_STREAM,0)) == -1) {
+ 		mg_log(LOG_ERR, "socket(PF_UNIX, SOCK_STREAM, 0) failed");
+ 		exit(EX_OSERR);
+ 	}
+Index: milter-greylist-4.2.5/spamd.c
+===================================================================
+--- milter-greylist-4.2.5.orig/spamd.c
++++ milter-greylist-4.2.5/spamd.c
+@@ -429,7 +429,7 @@ spamd_unix_socket(path)
+ 	sun.sun_family = AF_UNIX;
+ 	strncpy(sun.sun_path, path, sizeof(sun.sun_path) - 1);
+ 
+-	if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
++	if ((sock = socket_cloexec(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+ 		mg_log(LOG_ERR, "spamd socket failed: %s", strerror(errno));
+ 		return -1;
+ 	}
+@@ -476,9 +476,9 @@ again:
+ 	}
+ 
+ 	for (res = ai; res != NULL; res = res->ai_next) {
+-		sock = socket(res->ai_family, 
+-			      res->ai_socktype, 
+-			      res->ai_protocol);
++		sock = socket_cloexec(res->ai_family,
++				      res->ai_socktype,
++				      res->ai_protocol);
+ 		if (sock == -1)
+ 			continue;
+ 
+Index: milter-greylist-4.2.5/sync.c
+===================================================================
+--- milter-greylist-4.2.5.orig/sync.c
++++ milter-greylist-4.2.5/sync.c
+@@ -449,7 +449,8 @@ peer_connect(peer)	/* peer list is read-
+ 
+ 	for (res = res0; res; res = res->ai_next) {
+ 		/*We only test an address family which kernel supports. */
+-		s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
++		s = socket_cloexec(res->ai_family, res->ai_socktype,
++				   res->ai_protocol);
+ 		if (s == -1)
+ 			continue;
+ 		close(s);
+@@ -462,7 +463,8 @@ peer_connect(peer)	/* peer list is read-
+ 	}
+ 
+ 	for (res = res0; res; res = res->ai_next) {
+-		s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
++		s = socket_cloexec(res->ai_family, res->ai_socktype,
++				   res->ai_protocol);
+ 		if (s == -1)
+ 			continue;
+ 
+@@ -541,7 +543,8 @@ peer_connect(peer)	/* peer list is read-
+ 	else
+ 		proto = pe->p_proto;
+ 
+-	if ((s = socket(SA(&raddr)->sa_family, SOCK_STREAM, proto)) == -1) {
++	if ((s = socket_cloexec(SA(&raddr)->sa_family, SOCK_STREAM,
++				proto)) == -1) {
+ 		mg_log(LOG_ERR, "cannot sync with peer %s, "
+ 		    "socket failed: %s (%d entries queued)", 
+ 		    peer->p_name, strerror(errno), peer->p_qlen);
+@@ -779,6 +782,7 @@ sync_master(arg)
+ 
+ 
+ 		}
++		set_cloexec_flag(fd, 1);
+ 		unmappedaddr(SA(&raddr), &raddrlen);
+ 
+ 		conf_release();
+@@ -945,7 +949,7 @@ sync_listen(addr, port, sms)
+ 		return;
+ 	}
+ 
+-	if ((s = socket(SA(&laddr)->sa_family, SOCK_STREAM, proto)) == -1) {
++	if ((s = socket_cloexec(SA(&laddr)->sa_family, SOCK_STREAM, proto)) == -1) {
+ 		sms->runs = SMS_DISABLED;
+ 		return;
+ 	}
+@@ -1510,7 +1514,7 @@ local_addr(sa, salen)
+ 		break;
+ 	}
+ 
+-	if ((sfd = socket(sa->sa_family, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
++	if ((sfd = socket_cloexec(sa->sa_family, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+ 		mg_log(LOG_ERR, "local_addr: socket failed: %s",
+ 		    strerror(errno));
+ 		return -1;
+Index: milter-greylist-4.2.5/conf.c
+===================================================================
+--- milter-greylist-4.2.5.orig/conf.c
++++ milter-greylist-4.2.5/conf.c
+@@ -184,6 +184,7 @@ conf_load_internal(timestamp)
+ 		if (conf_cold)
+ 			exit(EX_OSERR);
+ 	} else {
++		set_cloexec_flag(fileno(stream), 1);
+ 		TSS_SET(conf_key, newconf);
+ 
+ 		peer_clear();
+Index: milter-greylist-4.2.5/fd_pool.c
+===================================================================
+--- milter-greylist-4.2.5.orig/fd_pool.c
++++ milter-greylist-4.2.5/fd_pool.c
+@@ -122,6 +122,7 @@ int fd_new_desc() {
+                         strerror(errno));
+                 return -1;
+         }
++	set_cloexec_flag(descriptor, 1);
+ 	return descriptor;
+ }
+ 
+@@ -340,6 +341,7 @@ FILE *fopen_ext(char *path, char *mode) 
+ 	err = errno;
+ 
+ 	if (stream != NULL) {
++		set_cloexec_flag(fileno(stream), 1);
+ 		if ( descriptor == fileno(stream) ) {
+ 			/* we are in luck, fopen has successfully aquired our low descriptor ... */
+ 			return stream;
+Index: milter-greylist-4.2.5/milter-greylist.c
+===================================================================
+--- milter-greylist-4.2.5.orig/milter-greylist.c
++++ milter-greylist-4.2.5/milter-greylist.c
+@@ -3227,3 +3227,29 @@ mg_setreply(ctx, priv, rcpt)
+ 	return r;
+ }
+ 
++#ifndef USE_CLOEXEC
++int socket_cloexec(int domain, int type, int protocol)
++{
++	int		fd = socket(domain, type, protocol);
++
++	if (fd >= 0)
++		set_cloexec_flag(fd, 1);
++
++	return fd;
++}
++#endif
++
++int set_cloexec_flag (int fd, int value)
++{
++	int oldflags = fcntl(fd, F_GETFD, 0);
++
++	if (oldflags < 0)
++		return oldflags;
++
++	if (value)
++		oldflags |= FD_CLOEXEC;
++	else
++		oldflags &= ~FD_CLOEXEC;
++
++	return fcntl(fd, F_SETFD, oldflags);
++}
+Index: milter-greylist-4.2.5/stat.c
+===================================================================
+--- milter-greylist-4.2.5.orig/stat.c
++++ milter-greylist-4.2.5/stat.c
+@@ -126,6 +126,8 @@ mg_stat_def(output, fstring)
+ 		return;
+ 	}
+ 
++	set_cloexec_flag(fileno(outfp), 1);
++
+ 	if ((format = fstring_escape(strdup(fstring))) == NULL) {
+ 		mg_log(LOG_ERR, "strdup failed: %s", strerror(errno));
+ 		exit(EX_OSERR);

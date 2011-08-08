@@ -1,0 +1,72 @@
+Index: milter-greylist-4.2.5/milter-greylist.c
+===================================================================
+--- milter-greylist-4.2.5.orig/milter-greylist.c
++++ milter-greylist-4.2.5/milter-greylist.c
+@@ -735,6 +735,7 @@ real_header(ctx, name, value)
+ 	strcat(h->h_line, sep);
+ 	strcat(h->h_line, value);
+ 	strcat(h->h_line, crlf);
++	h->h_len = len;
+ 
+ 	TAILQ_INSERT_TAIL(&priv->priv_header, h, h_list);
+ 
+@@ -814,6 +815,7 @@ real_body(ctx, chunk, size)
+ 			exit(EX_OSERR);
+ 		}
+ 
++		b->b_len = strlen(crlf);
+ 		TAILQ_INSERT_TAIL(&priv->priv_body, b, b_list);
+ 
+ 		priv->priv_msgcount += strlen(crlf);
+@@ -847,6 +849,7 @@ real_body(ctx, chunk, size)
+ 
+ 		memcpy(b->b_lines + priv->priv_buflen, chunk, i);
+ 		b->b_lines[linelen] = '\0';
++		b->b_len = linelen;
+ 		priv->priv_buflen = 0;
+ 
+ 		TAILQ_INSERT_TAIL(&priv->priv_body, b, b_list);
+@@ -904,6 +907,7 @@ real_eom(ctx)
+ 		}
+ 
+ 		b->b_lines = priv->priv_buf;
++		b->b_len = priv->priv_buflen - 1;
+ 		b->b_lines[priv->priv_buflen - 1] = '\0';
+ 
+ 		priv->priv_buf = NULL;
+Index: milter-greylist-4.2.5/milter-greylist.h
+===================================================================
+--- milter-greylist-4.2.5.orig/milter-greylist.h
++++ milter-greylist-4.2.5/milter-greylist.h
+@@ -173,11 +173,13 @@ struct rcpt {
+ 
+ struct header {
+ 	char *h_line;
++	size_t h_len;
+ 	TAILQ_ENTRY(header) h_list;
+ };
+ 
+ struct body {
+ 	char *b_lines;
++	size_t b_len;
+ 	TAILQ_ENTRY(body) b_list;
+ };
+ 
+Index: milter-greylist-4.2.5/spamd.c
+===================================================================
+--- milter-greylist-4.2.5.orig/spamd.c
++++ milter-greylist-4.2.5/spamd.c
+@@ -186,11 +186,11 @@ spamd_check(ad, stage, ap, priv)
+ 			return -1;
+ 
+ 	TAILQ_FOREACH(h, &priv->priv_header, h_list)
+-		if (spamd_write(sock, h->h_line, strlen(h->h_line)) == -1)
++		if (spamd_write(sock, h->h_line, h->h_len) == -1)
+ 			return -1;
+ 			
+ 	TAILQ_FOREACH(b, &priv->priv_body, b_list)
+-		if (spamd_write(sock, b->b_lines, strlen(b->b_lines)) == -1)
++		if (spamd_write(sock, b->b_lines, b->b_len) == -1)
+ 			return -1;
+ 
+ 	if (spamd_read(sock, buffer, SPAMD_BUFLEN) == -1)

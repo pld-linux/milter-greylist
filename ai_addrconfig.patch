@@ -1,0 +1,34 @@
+ISC libbind provides AI_ADDRCONFIG macro, but getaddrinfo() fails with
+EAI_BADFLAGS when invoked with it.  This patch retries getaddrinfo()
+without AI_ADDRCONFIG flag in this case.
+
+It is very simple and a ./configure test for working AI_ADDRCONFIG
+might be better.
+
+Index: milter-greylist-4.2.5/spamd.c
+===================================================================
+--- milter-greylist-4.2.5.orig/spamd.c
++++ milter-greylist-4.2.5/spamd.c
+@@ -454,11 +454,21 @@ spamd_inet_socket(host, port)
+ 
+ 	bzero(&hints, sizeof(hints));
+ 	hints.ai_socktype = SOCK_STREAM;
++
+ #ifdef AI_ADDRCONFIG
+ 	hints.ai_flags = AI_ADDRCONFIG;
++
++again:
++	e = getaddrinfo(host, port, &hints, &ai);
++	if (e == EAI_BADFLAGS && (hints.ai_flags & AI_ADDRCONFIG)) {
++		hints.ai_flags &= ~AI_ADDRCONFIG;
++		goto again;
++	}
++#else
++	e = getaddrinfo(host, port, &hints, &ai);
+ #endif
+ 
+-	if ((e = getaddrinfo(host, port, &hints, &ai))) {
++	if (e) {
+ 		mg_log(LOG_ERR, 
+ 		       "spamd getaddrinfo failed: %s", 
+ 		       gai_strerror(e));
