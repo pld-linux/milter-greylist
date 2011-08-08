@@ -1,0 +1,17 @@
+--- milter-greylist-4.2.7/greylist.conf.orig	2009-02-12 23:39:01.000000000 +0100
++++ milter-greylist-4.2.7/greylist.conf	2011-08-08 21:10:24.240617668 +0200
+@@ -5,11 +5,12 @@
+ # $Id$
+ #
+ 
+-pidfile "/var/run/milter-greylist.pid"
++#pidfile "/var/run/milter-greylist.pid"
+ socket "/var/milter-greylist/milter-greylist.sock"
+ dumpfile "/var/milter-greylist/greylist.db" 600
++geoipdb "/usr/share/GeoIP/GeoIP.dat"
+ dumpfreq 1
+-user "smmsp"
++user "grmilter"
+ 
+ # Log milter-greylist activity to a file
+ #stat ">>/var/milter-greylist/greylist.log" \
