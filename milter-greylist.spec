@@ -10,7 +10,7 @@ Release:	0.2
 License:	BSD with advertising
 Group:		Daemons
 URL:		http://hcpnet.free.fr/milter-greylist/
-Source0:	ftp://ftp.espci.fr/pub/milter-greylist/%{name}-%{version}%{?beta}.tgz
+Source0:	ftp://ftp.espci.fr/pub/milter-greylist/%{name}-%{version}.tgz
 # Source0-md5:	a47d70e0b8a73d341f0d511b3f693650
 Source1:	%{name}.init
 Patch4:		ai_addrconfig.patch
