@@ -29,7 +29,11 @@ BuildRequires:	flex
 BuildRequires:	libmilter-devel
 %{?with_spf:BuildRequires:	libspf-devel}
 BuildRequires:	m4
+BuildRequires:	rpm >= 4.4.9-56
 BuildRequires:	rpmbuild(macros) >= 1.202
+%if "%{pld_release}" == "ac"
+BuildRequires:	glibc-static
+%endif
 Requires(postun):	/usr/sbin/groupdel
 Requires(postun):	/usr/sbin/userdel
 Requires(pre):	/bin/id
@@ -62,7 +66,10 @@ This package provides a greylist filter for sendmail's milter API.
 %patch9 -p1
 %patch10 -p1
 
+%if "%{pld_release}" != "ac"
+# on ac shared libresolv does not have the __ns_initparse sym that <arpa/nameser.h> defines
 %{__sed} -i -e 's!/libresolv.a!/../../../no-such-lib.a!g' configure.ac
+%endif
 
 # drop rpath and wrong lib dir
 %{__sed} -i -e 's#-L$withval/lib -Wl,$rpath$withval/lib##' configure.ac
