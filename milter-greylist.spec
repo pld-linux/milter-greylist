@@ -60,11 +60,11 @@ This package provides a greylist filter for sendmail's milter API.
 
 %prep
 %setup -q
-%patch4 -p1
-%patch7 -p1
-%patch8 -p1
-%patch9 -p1
-%patch10 -p1
+%patch -P4 -p1
+%patch -P7 -p1
+%patch -P8 -p1
+%patch -P9 -p1
+%patch -P10 -p1
 
 %if "%{pld_release}" != "ac"
 # on ac shared libresolv does not have the __ns_initparse sym that <arpa/nameser.h> defines
